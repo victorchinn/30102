@@ -73,6 +73,8 @@ def getUChar(data,index):
 # -----------------------------------------------------------------------------
 
 DEVICE = 0x57
+Data_IR = []
+Data_RED = []
 
 class MAX30102(object):
     """Raspberry Pi 'Maxim 30102 Sensor'."""
@@ -82,12 +84,6 @@ class MAX30102(object):
         self.bus = smbus.SMBus(1)   # Rev 2 Pi, Pi 2 & Pi 3 uses bus 1
                                     # Rev 1 Pi uses bus 0
         self.addr = addr            # register the address with the object
-
-    def readMAX30102_ID(self):
-        # read two registers using block data read of two bytes
-        REG_ID     = 0xFE
-        (chip_id, chip_version) = self.bus.read_i2c_block_data(self.addr, REG_ID, 2)
-        return (chip_id, chip_version)
 
     def readBMP280All(self, addr=DEVICE):
         # Register Addresses
@@ -175,23 +171,20 @@ class MAX30102(object):
 
     def MAX30102_INIT(self):
         # Initialize the MAX30102
-        #self.bus.write_byte_data(self.addr,REG_INTR_ENABLE_1,0xC0)  # ORG INTR setting
-        self.bus.write_byte_data(self.addr,REG_INTR_ENABLE_1,0x40)  # INTR setting data in FIFO
+        self.bus.write_byte_data(self.addr,REG_INTR_ENABLE_1,0xC0)  # ORG INTR setting
         self.bus.write_byte_data(self.addr,REG_INTR_ENABLE_2,0x00)  #
+
         self.bus.write_byte_data(self.addr,REG_FIFO_WR_PTR,0x00)    # FIFO_WR_PTR[4:0]
         self.bus.write_byte_data(self.addr,REG_OVF_COUNTER,0x00)    # OVF_COUNTER[4:0]
         self.bus.write_byte_data(self.addr,REG_FIFO_RD_PTR,0x00)    # FIFO_RD_PTR[4:0]
-        #   self.bus.write_byte_data(self.addr,REG_FIFO_CONFIG,0x0F)    # sample avg = 1, fifo rollover=false, fifo almost full = 17 MBED STYLE
-        self.bus.write_byte_data(self.addr,REG_FIFO_CONFIG,0x4F)    # sample avg = 4, fifo rollover=false, fifo almost full = 17 ARDUINO STYLE
+
+        self.bus.write_byte_data(self.addr,REG_FIFO_CONFIG,0x1F)    # sample avg = 1, fifo rollover=false, fifo almost full = 17 MBED STYLE
         
-        #self.bus.write_byte_data(self.addr,REG_MODE_CONFIG,0x03)   # ORG 0x02 for Red only, 0x03 for SpO2 mode 0x07 multimode LED
-        self.bus.write_byte_data(self.addr,REG_MODE_CONFIG,0x02)    # 03.24.17 0x02 for Red only, 0x03 for SpO2 mode 0x07 multimode LED
+        self.bus.write_byte_data(self.addr,REG_MODE_CONFIG,0x03)    # 03.24.17 0x02 for Red only, 0x03 for SpO2 mode 0x07 multimode LED
  
         self.bus.write_byte_data(self.addr,REG_SPO2_CONFIG,0x27)    # SPO2_ADC range = 4096nA, SPO2 sample rate (self.addr,100 Hz), LED pulseWidth (self.addr,400uS)
-        #self.bus.write_byte_data(self.addr,REG_LED1_PA,0x24)       # ORG Choose value for ~ 7mA for LED1
-        #self.bus.write_byte_data(self.addr,REG_LED2_PA,0x24)       # ORG Choose value for ~ 7mA for LED2
-        self.bus.write_byte_data(self.addr,REG_LED1_PA,0xFF)        # Choose value for ~ 50mA for LED1
-        self.bus.write_byte_data(self.addr,REG_LED2_PA,0xFF)        # Choose value for ~ 50mA for LED2
+        self.bus.write_byte_data(self.addr,REG_LED1_PA,0x24)        # ORG Choose value for ~ 7mA for LED1
+        self.bus.write_byte_data(self.addr,REG_LED2_PA,0x24)        # ORG Choose value for ~ 7mA for LED2
         self.bus.write_byte_data(self.addr,REG_PILOT_PA,0x7F)       # Choose value for ~ 25mA for Pilot LED
         return
 
@@ -207,30 +200,32 @@ class MAX30102(object):
 
         int_status1 = self.bus.read_byte_data(self.addr, REG_INTR_STATUS_1)
         int_status2 = self.bus.read_byte_data(self.addr, REG_INTR_STATUS_2)
-
         # (int_status1, int_status2) = self.bus.read_i2c_block_data(self.addr, REG_ID, 2)
-        # print   "Int Status : ", int_status1,":",int_status2
+        #print   "I_stat:",int_status1,":",int_status2
+
+        #overflow = self.bus.read_byte_data(self.addr, REG_OVF_COUNTER)
+        #print "Overflow:",overflow
+
+        #write_ptr = self.bus.read_byte_data(self.addr, REG_FIFO_WR_PTR)
+        #read_ptr  = self.bus.read_byte_data(self.addr, REG_FIFO_RD_PTR)
+        #num_samples = abs (32 + write_ptr - read_ptr) % 32 
+        #print "BEFORE W_PTR:",write_ptr,"R_PTR:",read_ptr,"#_S:",num_samples
+
+        # get the sample ... 3 bytes for IR and 3 bytes for RED
+        data = self.bus.read_i2c_block_data(self.addr, REG_FIFO_DATA, 6)
+        print data[0],data[1],data[2],data[3],data[4],data[5]
+
+        Data_IR.append((data[0]<<16)|(data[1]<<8)|(data[2]))
+        Data_RED.append((data[3]<<16)|(data[4]<<8)|(data[5]))
+
+        #write_ptr = self.bus.read_byte_data(self.addr, REG_FIFO_WR_PTR)
+        #read_ptr  = self.bus.read_byte_data(self.addr, REG_FIFO_RD_PTR)
+        #num_samples = abs (32 + write_ptr - read_ptr) % 32 
+        #print "AFTER read 1 sample W_PTR:",write_ptr,"R_PTR:",read_ptr,"#_S:",num_samples
+        ##import pdb; pdb.set_trace()
+ 
+        return
         
-
-        # overflow = self.bus.read_byte_data(self.addr, REG_OVF_COUNTER)
-        #print overflow,
-
-        self.bus.write_byte_data(self.addr,REG_FIFO_DATA,0x00)
-
-        # self.bus.read_byte_data(self.addr,REG_FIFO_DATA)
-
-        setread = self.bus.read_byte(self.addr)
-        #print setread,
-
-        # read 6 bytes
-        (D1) = self.bus.read_byte(self.addr)
-        (D2) = self.bus.read_byte(self.addr)
-        (D3) = self.bus.read_byte(self.addr)
-        (D4) = self.bus.read_byte(self.addr)
-        #(D5) = self.bus.read_byte(self.addr)
-        #(D6) = self.bus.read_byte(self.addr)
-        return (D1,D2,D3,D4)
-
         # self.bus.read_max30102_read_reg(REG_INTR_STATUS_1, &uch_temp);
         # maxim_max30102_read_reg(REG_INTR_STATUS_2, &uch_temp);
   
@@ -248,52 +243,50 @@ class MAX30102(object):
 # main to test from CLI
 def main():
     
-    Data_Samples = []
-    SixByteSampleCount = 0
-
-    # create an instance of my RPi Maxoim 30102 Sensor Object
+    # create an instance of my RPi Maxim 30102 Sensor Object
     RPiSensor = MAX30102()
     RPiGPIO = PiGpio()
      
     RPiSensor.MAX30102_RESET()
-
 
     # Press key to start
     # input()
 
     RPiSensor.MAX30102_INIT()
 
-
     # Read the Sensor ID.
     (chip_id, chip_version) = RPiSensor.readMAX30102_ID()
     print "    Chip ID :", chip_id
     print "    Version :", chip_version
-    
-    while (1) :
+
+    keeprunning = True    
+    while (keeprunning == True) :
         # now setup to make measurements
 
-        for num in range(100):
+        for num in range(500):
             while (RPiGPIO.read_int()==1):
                 pass
-            (D1,D2,D3,D4) = RPiSensor.MAX30102_READ_FIFO() 
-            Data_Samples.append((D1,D2,D3,D4))
+            RPiSensor.MAX30102_READ_FIFO() 
+            #Data_Samples.append((D1,D2,D3,D4))
             #import pdb; pdb.set_trace()
 
         # # Read the Sensor ID.
         # (chip_id, chip_version) = RPiSensor.readMAX30102_ID()
         # print "    Chip ID :", chip_id
         # print "    Version :", chip_version
-
-        Count = 0
-        for item in Data_Samples:
-            Count = Count + 1 
-            print Count, ": ", item
         
 
-        # Read the Sensor Temp/Pressure values.
-        # (temperature, pressure) = RPiSensor.readBMP280All()
-        # print "Temperature :", temperature, "C"
-        # print "   Pressure :", pressure, "hPa"
+        Count = 0
+        for item in Data_IR:
+            Count = Count + 1 
+            print Count, ": ",item
+        
+        Count = 0
+        for item in Data_RED:
+            Count = Count + 1 
+            print Count, ": ", item
+
+        keeprunning = False
 
 if __name__=="__main__":
    main()
