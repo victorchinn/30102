@@ -169,10 +169,14 @@ class MAX30102(object):
         (chip_id, chip_version) = self.bus.read_i2c_block_data(self.addr, REG_ID, 2)
         return (chip_id, chip_version)
 
+    def readMAX30102_INT_Status(self):
+        int_status1 = self.bus.read_byte_data(self.addr, REG_INTR_STATUS_1)
+        int_status2 = self.bus.read_byte_data(self.addr, REG_INTR_STATUS_2)
+        return (int_status1, int_status2)
+        
     def MAX30102_INIT(self):
         # Initialize the MAX30102
-        self.bus.write_byte_data(self.addr,REG_INTR_ENABLE_1,0xC0)  # ORG INTR setting
-        self.bus.write_byte_data(self.addr,REG_INTR_ENABLE_2,0x00)  #
+        self.bus.write_byte_data(self.addr,REG_INTR_ENABLE_1,0xD0)  # ORG INTR setting
 
         self.bus.write_byte_data(self.addr,REG_FIFO_WR_PTR,0x00)    # FIFO_WR_PTR[4:0]
         self.bus.write_byte_data(self.addr,REG_OVF_COUNTER,0x00)    # OVF_COUNTER[4:0]
@@ -183,9 +187,9 @@ class MAX30102(object):
         self.bus.write_byte_data(self.addr,REG_MODE_CONFIG,0x03)    # 03.24.17 0x02 for Red only, 0x03 for SpO2 mode 0x07 multimode LED
  
         self.bus.write_byte_data(self.addr,REG_SPO2_CONFIG,0x27)    # SPO2_ADC range = 4096nA, SPO2 sample rate (self.addr,100 Hz), LED pulseWidth (self.addr,400uS)
-        self.bus.write_byte_data(self.addr,REG_LED1_PA,0x24)        # ORG Choose value for ~ 7mA for LED1
-        self.bus.write_byte_data(self.addr,REG_LED2_PA,0x24)        # ORG Choose value for ~ 7mA for LED2
-        self.bus.write_byte_data(self.addr,REG_PILOT_PA,0x7F)       # Choose value for ~ 25mA for Pilot LED
+        self.bus.write_byte_data(self.addr,REG_LED1_PA,0x24)        # value for ~ 7mA for LED1
+        self.bus.write_byte_data(self.addr,REG_LED2_PA,0x24)        # value for ~ 7mA for LED2
+        self.bus.write_byte_data(self.addr,REG_PILOT_PA,0x7F)       # value for ~ 25mA for Pilot LED
         return
 
     def MAX30102_RESET(self):
@@ -195,29 +199,35 @@ class MAX30102(object):
 
     def MAX30102_READ_FIFO(self):
         # read the fifo
-        # read and clear status register
-        # read two registers using block data read of two bytes
 
-        int_status1 = self.bus.read_byte_data(self.addr, REG_INTR_STATUS_1)
-        int_status2 = self.bus.read_byte_data(self.addr, REG_INTR_STATUS_2)
+        #this is moved to inside the main while loop
+        #int_status1 = self.bus.read_byte_data(self.addr, REG_INTR_STATUS_1)
+        #int_status2 = self.bus.read_byte_data(self.addr, REG_INTR_STATUS_2)
         # (int_status1, int_status2) = self.bus.read_i2c_block_data(self.addr, REG_ID, 2)
         #print   "I_stat:",int_status1,":",int_status2
 
-        #overflow = self.bus.read_byte_data(self.addr, REG_OVF_COUNTER)
-        #print "Overflow:",overflow
-
+        
         #write_ptr = self.bus.read_byte_data(self.addr, REG_FIFO_WR_PTR)
         #read_ptr  = self.bus.read_byte_data(self.addr, REG_FIFO_RD_PTR)
         #num_samples = abs (32 + write_ptr - read_ptr) % 32 
         #print "BEFORE W_PTR:",write_ptr,"R_PTR:",read_ptr,"#_S:",num_samples
 
-        # get the sample ... 3 bytes for IR and 3 bytes for RED
-        data = self.bus.read_i2c_block_data(self.addr, REG_FIFO_DATA, 6)
-        print data[0],data[1],data[2],data[3],data[4],data[5]
+        # from the MODE of 30102, determine the number of active channels for measurement data 
+        # 3 bytes for RED only channel or 6 bytes for RED and IR data channels
+        if (self.bus.read_byte_data(self.addr, REG_MODE_CONFIG) == 2):
+            # MODE 0x02 == Heart Rate RED only measurements
+            data = self.bus.read_i2c_block_data(self.addr, REG_FIFO_DATA, 3)
+            #print "RED:",data[0],data[1],data[2]
+            Data_RED.append((data[0]<<16)|(data[1]<<8)|(data[2]))
+        else:
+            # MODE 0x03 == Heart Rate RED and SpO2 IR measurements
+            data = self.bus.read_i2c_block_data(self.addr, REG_FIFO_DATA, 6)
+            #print "RED:",data[0],data[1],data[2]
+            #print "IR:",data[3],data[4],data[5]
+            Data_RED.append((data[0]<<16)|(data[1]<<8)|(data[2]))
+            Data_IR.append((data[3]<<16)|(data[4]<<8)|(data[5]))
 
-        Data_IR.append((data[0]<<16)|(data[1]<<8)|(data[2]))
-        Data_RED.append((data[3]<<16)|(data[4]<<8)|(data[5]))
-
+        # check the write and read pointers to see if they were updated
         #write_ptr = self.bus.read_byte_data(self.addr, REG_FIFO_WR_PTR)
         #read_ptr  = self.bus.read_byte_data(self.addr, REG_FIFO_RD_PTR)
         #num_samples = abs (32 + write_ptr - read_ptr) % 32 
@@ -225,18 +235,7 @@ class MAX30102(object):
         ##import pdb; pdb.set_trace()
  
         return
-        
-        # self.bus.read_max30102_read_reg(REG_INTR_STATUS_1, &uch_temp);
-        # maxim_max30102_read_reg(REG_INTR_STATUS_2, &uch_temp);
-  
-        #  ach_i2c_data[0]=REG_FIFO_DATA;
-        #  if(i2c.write(I2C_WRITE_ADDR, ach_i2c_data, 1, true)!=0)
-        #    return false;
-        #  if(i2c.read(I2C_READ_ADDR, ach_i2c_data, 6, false)!=0)
-        #  {
-        #    return false;
-        #  }
-
+    
 
 
 # =============================================================================
@@ -250,22 +249,32 @@ def main():
     RPiSensor.MAX30102_RESET()
 
     # Press key to start
-    # input()
-
+ 
     RPiSensor.MAX30102_INIT()
 
     # Read the Sensor ID.
-    (chip_id, chip_version) = RPiSensor.readMAX30102_ID()
-    print "    Chip ID :", chip_id
-    print "    Version :", chip_version
+    #(chip_id, chip_version) = RPiSensor.readMAX30102_ID()
+    #print "    Chip ID :", chip_id
+    #print "    Version :", chip_version
 
-    keeprunning = True    
-    while (keeprunning == True) :
+    EnterKey = raw_input("Place finger then press ENTER to begin...")
+    
+    print "Starting 500 measurements..."
+    
+    # Make 500 measurements    
+    
+    KeepRunning = True    
+    while (KeepRunning == True):
         # now setup to make measurements
 
         for num in range(500):
             while (RPiGPIO.read_int()==1):
                 pass
+            
+            # get the interrupt status and then reset it
+            (int_status1,int_status2) = RPiSensor.readMAX30102_INT_Status()
+            #print   "I_stat:",int_status1,":",int_status2
+
             RPiSensor.MAX30102_READ_FIFO() 
             #Data_Samples.append((D1,D2,D3,D4))
             #import pdb; pdb.set_trace()
@@ -275,18 +284,69 @@ def main():
         # print "    Chip ID :", chip_id
         # print "    Version :", chip_version
         
-
-        Count = 0
-        for item in Data_IR:
-            Count = Count + 1 
-            print Count, ": ",item
+        #count = 0
+        #for item in Data_RED:
+        #    print "Data_RED ",count,":",item
+        #    count = count + 1
+        #
+        #count = 0
+        #for item in Data_IR:
+        #    print "Data_IR  ",count,":",item
+        #    count = count + 1
         
-        Count = 0
-        for item in Data_RED:
-            Count = Count + 1 
-            print Count, ": ", item
+        KeepRunning = False  # stop here...
 
-        keeprunning = False
+
+    # at this point the first 500 samples are recorded...
+
+    #import pdb; pdb.set_trace()
+     
+    # Data_Red has 500 elements and Data_IR has 500 elements 
+
+    
+    while (1):
+        # shift last 400 samples to first 400 samples by deleting first 100 samples
+        if (len(Data_RED) == 500):
+            del Data_RED[0:100]
+    
+        if (len(Data_IR) == 500):
+            del Data_IR[0:100]
+    
+        # read another 100 samples and append 
+        #import pdb; pdb.set_trace()
+        
+        KeepRunning = True
+        while (KeepRunning == True) :
+            # now setup to make measurements
+
+            print "Starting 100 measurements..."
+            for num in range(100):
+                while (RPiGPIO.read_int()==1):
+                    pass
+            
+                # get the interrupt status and then reset it
+                (int_status1,int_status2) = RPiSensor.readMAX30102_INT_Status()
+                #print   "I_stat:",int_status1,":",int_status2
+
+                RPiSensor.MAX30102_READ_FIFO() # data is stored in Data_RED and Data_IR
+                #Data_Samples.append((D1,D2,D3,D4))
+                #import pdb; pdb.set_trace()
+                
+            # 100 more measurements added ... making 500 valid total samples have been measured         
+            KeepRunning = False  # stop here...
+    
+        # then PROCESS to determine heart rate and SpO2 measurements
+
+        # PROCESS DATA_RED AND DATA_IR to determine heartrate and SpO2 level
+
+        # print the results
+        print "Results are: ", len(Data_RED)," Data_RED ",len(Data_IR)," Data_IR samples."
+
+        # then loop around to do this every second
+
+
+
+
 
 if __name__=="__main__":
    main()
