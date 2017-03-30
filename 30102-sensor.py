@@ -304,7 +304,8 @@ def main():
     # Data_Red has 500 elements and Data_IR has 500 elements 
 
     
-    while (1):
+    #while (1):
+    for num in range(5):
         # shift last 400 samples to first 400 samples by deleting first 100 samples
         if (len(Data_RED) == 500):
             del Data_RED[0:100]
@@ -343,6 +344,14 @@ def main():
         print "Results are: ", len(Data_RED)," Data_RED ",len(Data_IR)," Data_IR samples."
 
         # then loop around to do this every second
+    
+    #when all done...spit out the last 500 samples for each of Data_RED and Data_IR samples
+    for num in range(499):
+        print "Data_RED:",num,Data_RED[num]
+
+    for num in range(499):
+        print "Data_IR:",num,Data_IR[num]
+
 
 
 
